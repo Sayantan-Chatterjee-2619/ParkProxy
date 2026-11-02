@@ -1,4 +1,4 @@
-"""Private Audio Calling Application - FastAPI + WebRTC
+"""ParkProxy - Private Audio Calling Application
 
 A zero-dependency, privacy-focused WebRTC audio call app that allows two people
 to communicate over a web browser using a unique room URL without revealing phone
@@ -44,13 +44,13 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("park-assist")
+logger = logging.getLogger("parkproxy")
 
 # ---------------------------------------------------------------------------
 # FastAPI app & Jinja2 templates
 # ---------------------------------------------------------------------------
 app = FastAPI(
-    title="Park Assist - Private Audio Calling",
+    title="ParkProxy - Private Audio Calling",
     description="Privacy-focused WebRTC audio calls via unique room URLs.",
     version="1.0.0",
 )
