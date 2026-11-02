@@ -365,8 +365,24 @@
             <div class="viz-bar"></div>
             <div class="viz-bar"></div>
           </div>
+          <div class="viz-pulse" id="local-viz-pulse"></div>
         </div>
-        <div class="viz-pulse" id="remote-viz-pulse"></div>
+        <div class="viz-group">
+          <div class="viz-label">Peer</div>
+          <div class="viz-bars" id="remote-viz-bars">
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+          </div>
+          <div class="viz-pulse" id="remote-viz-pulse"></div>
+        </div>
       </div>
       <div class="controls">
         <button id="mute-btn">Mute Mic</button>
@@ -472,6 +488,8 @@ const PUBLIC_ROOM = "parkproxy-public";
     let remoteAnalyser = null;
     let vizAnimationId = null;
     const localBars = document.querySelectorAll("#local-viz-bars .viz-bar");
+    const remoteBars = document.querySelectorAll("#remote-viz-bars .viz-bar");
+    const localPulseEl = $("local-viz-pulse");
     const remotePulseEl = $("remote-viz-pulse");
     const audioVizEl = $("audio-viz");
 
@@ -614,15 +632,25 @@ const PUBLIC_ROOM = "parkproxy-public";
       const remoteVol = getVolume(remoteAnalyser);
 
       // Update local bars
-      const barCount = localBars.length;
-      const localHeight = Math.max(localVol * 100, 10);
       localBars.forEach((bar, i) => {
         const h = Math.max(localVol * (60 + Math.sin(i) * 20), 8);
         bar.style.height = `${h}px`;
         bar.classList.toggle("active", localVol > 0.05);
       });
 
-      // Update remote pulse
+      // Update remote bars
+      remoteBars.forEach((bar, i) => {
+        const h = Math.max(remoteVol * (60 + Math.sin(i) * 20), 8);
+        bar.style.height = `${h}px`;
+        bar.classList.toggle("active", remoteVol > 0.05);
+      });
+
+      // Update pulses
+      if (localVol > 0.05) {
+        localPulseEl.classList.add("active");
+      } else {
+        localPulseEl.classList.remove("active");
+      }
       if (remoteVol > 0.05) {
         remotePulseEl.classList.add("active");
       } else {
@@ -815,6 +843,11 @@ const PUBLIC_ROOM = "parkproxy-public";
         bar.style.height = "8px";
         bar.classList.remove("active");
       });
+      remoteBars.forEach((bar) => {
+        bar.style.height = "8px";
+        bar.classList.remove("active");
+      });
+      localPulseEl.classList.remove("active");
       remotePulseEl.classList.remove("active");
       audioVizEl.classList.remove("visible");
 
