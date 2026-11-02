@@ -329,8 +329,8 @@
       if (turnCredentials) {
         const { username, credential } = turnCredentials;
         iceServers.push(
-          { urls: "turn:localhost:3478", username, credential },
-          { urls: "turns:localhost:5349?transport=tcp", username, credential }
+        { urls: "turn:140.245.203.10:3478", username, credential },
+        { urls: "turns:140.245.203.10:5349?transport=tcp", username, credential }
         );
       }
       return { iceServers, iceCandidatePoolSize: 0 };
