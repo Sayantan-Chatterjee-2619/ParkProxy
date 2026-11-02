@@ -97,24 +97,6 @@
       box-shadow: none;
     }
 
-    #copy-btn {
-      margin-top: 0.5rem;
-      background: transparent;
-      border: 1px solid #475569;
-      color: #94a3b8;
-      max-width: 320px;
-      width: 100%;
-      padding: 0.75rem 1rem;
-      font-size: 0.95rem;
-      border-radius: 0.5rem;
-      cursor: pointer;
-    }
-
-    #copy-btn:hover {
-      border-color: #3b82f6;
-      color: #3b82f6;
-    }
-
     button {
       width: 100%;
       max-width: 320px;
@@ -268,7 +250,6 @@
       <h2>ParkProxy</h2>
       <p>Click Start Call to enter the shared audio room. One other person can join you.</p>
       <button id="start-btn">Start Call</button>
-      <button id="copy-btn" class="hidden">Copy room link</button>
     </section>
 
     <!-- Active call UI -->
@@ -355,7 +336,6 @@ const PUBLIC_ROOM = "parkproxy-public";
     const overlayActionEl = $("overlay-action");
 
     const startBtnEl = $("start-btn");
-    const copyBtnEl = $("copy-btn");
 
     const remoteLabelEl = $("remote-label");
     const statusEl = $("status");
@@ -580,13 +560,13 @@ const PUBLIC_ROOM = "parkproxy-public";
         endCall({ notifyPeer: false });
         participantCountEl.textContent = "Participants: 0";
         showOverlay("Call Ended", "The other participant left the call.", "OK").then(() => {
-          location.reload();
+          window.location.replace(window.location.href);
         });
       } else if (type === "error") {
         endCall({ notifyPeer: false });
         participantCountEl.textContent = "Participants: 0";
         showOverlay("Error", message.message || "An error occurred.", "OK").then(() => {
-          location.reload();
+          window.location.replace(window.location.href);
         });
       }
     }
@@ -695,8 +675,6 @@ const PUBLIC_ROOM = "parkproxy-public";
     function initUI() {
       // Single shared room — everyone joins the same room
       roomId = PUBLIC_ROOM;
-      copyBtnEl.classList.remove("hidden");
-      copyBtnEl.title = buildRoomUrl(PUBLIC_ROOM);
 
       startBtnEl.addEventListener("click", async () => {
         startBtnEl.disabled = true;
@@ -727,36 +705,8 @@ const PUBLIC_ROOM = "parkproxy-public";
           console.error(err);
           startBtnEl.disabled = false;
           startBtnEl.textContent = "Start Call";
-          await showOverlay("Call Error", err.message, "OK");
+        await showOverlay("Call Error", err.message, "OK");
         }
-      });
-
-      copyBtnEl.addEventListener("click", () => {
-        if (!roomId) return;
-        const url = buildRoomUrl(roomId);
-        navigator.clipboard
-          .writeText(url)
-          .then(() => {
-            const original = copyBtnEl.textContent;
-            copyBtnEl.textContent = "Copied!";
-            setTimeout(() => {
-              copyBtnEl.textContent = original;
-            }, 1500);
-          })
-          .catch(() => {
-            // Fallback: create a temporary input to copy
-            const temp = document.createElement("textarea");
-            temp.value = url;
-            document.body.appendChild(temp);
-            temp.select();
-            document.execCommand("copy");
-            document.body.removeChild(temp);
-            const original = copyBtnEl.textContent;
-            copyBtnEl.textContent = "Copied!";
-            setTimeout(() => {
-              copyBtnEl.textContent = original;
-            }, 1500);
-          });
       });
 
       muteBtnEl.addEventListener("click", toggleMute);
@@ -770,22 +720,6 @@ const PUBLIC_ROOM = "parkproxy-public";
 
       overlayActionEl.addEventListener("click", () => {
         hideOverlay();
-      });
-
-      // Update the copy button when a room is established
-      Object.defineProperty(window, "currentRoomId", {
-        set(val) {
-          roomId = val;
-          if (val) {
-            copyBtnEl.classList.remove("hidden");
-            copyBtnEl.title = buildRoomUrl(val);
-          } else {
-            copyBtnEl.classList.add("hidden");
-          }
-        },
-        get() {
-          return roomId;
-        },
       });
     }
 
