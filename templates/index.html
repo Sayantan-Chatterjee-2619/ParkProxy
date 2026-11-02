@@ -579,14 +579,14 @@ const PUBLIC_ROOM = "parkproxy-public";
         setStatus("Peer ended the call.");
         endCall({ notifyPeer: false });
         participantCountEl.textContent = "Participants: 0";
-        showOverlay("Call Ended", "The other participant left the call.", "Return to Lobby").then(() => {
-          returnToLobby();
+        showOverlay("Call Ended", "The other participant left the call.", "OK").then(() => {
+          location.reload();
         });
       } else if (type === "error") {
         endCall({ notifyPeer: false });
         participantCountEl.textContent = "Participants: 0";
         showOverlay("Error", message.message || "An error occurred.", "OK").then(() => {
-          returnToLobby();
+          location.reload();
         });
       }
     }
