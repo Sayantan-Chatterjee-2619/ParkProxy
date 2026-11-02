@@ -274,6 +274,7 @@
     <!-- Active call UI -->
     <section id="call-ui">
       <div id="remote-label">Connected to peer</div>
+      <div id="participant-count">Participants: 1</div>
       <div id="status">Establishing secure connection&hellip;</div>
       <div class="controls">
         <button id="mute-btn">Mute Mic</button>
@@ -358,6 +359,7 @@ const PUBLIC_ROOM = "parkproxy-public";
 
     const remoteLabelEl = $("remote-label");
     const statusEl = $("status");
+    const participantCountEl = $("participant-count");
     const muteBtnEl = $("mute-btn");
     const endBtnEl = $("end-btn");
 
@@ -373,6 +375,7 @@ const PUBLIC_ROOM = "parkproxy-public";
     let peerRole = null; // "offerer" | "answerer", set by signaling server
     let roleResolve = null;
     let overlayResolve = null;
+    let remoteAudioElements = []; // Track remote audio elements for cleanup
 
     /* --------------------------------------------------------------
        Helpers
@@ -483,6 +486,7 @@ const PUBLIC_ROOM = "parkproxy-public";
         audio.setAttribute("playsinline", "");
         audio.style.display = "none";
         document.body.appendChild(audio);
+        remoteAudioElements.push(audio);
         audio.play().catch((err) => {
           console.warn("Remote audio autoplay blocked:", err);
         });
@@ -546,6 +550,11 @@ const PUBLIC_ROOM = "parkproxy-public";
         await waitForRole();
       }
 
+      if (type === "participant_count") {
+        participantCountEl.textContent = `Participants: ${message.count}`;
+        return;
+      }
+
       if (type === "offer") {
         isCaller = false;
         await peerConnection.setRemoteDescription(
@@ -569,12 +578,16 @@ const PUBLIC_ROOM = "parkproxy-public";
       } else if (type === "bye") {
         setStatus("Peer ended the call.");
         endCall({ notifyPeer: false });
-        setTimeout(() => {
-          showOverlay("Call Ended", "The other participant left the call.", "OK");
-        }, 800);
+        participantCountEl.textContent = "Participants: 0";
+        showOverlay("Call Ended", "The other participant left the call.", "Return to Lobby").then(() => {
+          returnToLobby();
+        });
       } else if (type === "error") {
         endCall({ notifyPeer: false });
-        showOverlay("Error", message.message || "An error occurred.", "OK");
+        participantCountEl.textContent = "Participants: 0";
+        showOverlay("Error", message.message || "An error occurred.", "OK").then(() => {
+          returnToLobby();
+        });
       }
     }
 
@@ -592,6 +605,22 @@ const PUBLIC_ROOM = "parkproxy-public";
         peerConnection = null;
       }
 
+      // Stop and remove all remote audio elements
+      remoteAudioElements.forEach((audio) => {
+        try {
+          audio.pause();
+          audio.srcObject = null;
+        } catch (err) {
+          console.warn("Failed to stop remote audio:", err);
+        }
+        try {
+          audio.remove();
+        } catch (err) {
+          console.warn("Failed to remove remote audio element:", err);
+        }
+      });
+      remoteAudioElements = [];
+
       if (localStream) {
         localStream.getTracks().forEach((track) => track.stop());
         localStream = null;
@@ -608,6 +637,7 @@ const PUBLIC_ROOM = "parkproxy-public";
       callUiEl.style.display = "none";
       lobbyEl.style.display = "flex";
       setStatus("");
+      participantCountEl.textContent = "Participants: 1";
     }
 
     /* --------------------------------------------------------------

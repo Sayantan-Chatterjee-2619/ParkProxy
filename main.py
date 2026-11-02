@@ -147,6 +147,19 @@ async def broadcast_to_peer(room: Room, sender_id: str, message: dict):
                 logger.warning("Failed to send to peer %s: %s", conn_id, exc)
 
 
+async def broadcast_room_state(room: Room):
+    """Send current participant count to all connections in the room."""
+    message = json.dumps({
+        "type": "participant_count",
+        "count": len(room.connections),
+    })
+    for conn_id, websocket in list(room.connections.items()):
+        try:
+            await websocket.send_text(message)
+        except Exception as exc:
+            logger.warning("Failed to send room state to %s: %s", conn_id, exc)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -202,6 +215,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except Exception as exc:
         logger.warning("Failed to send role to %s: %s", conn_id, exc)
 
+    # Notify all participants of current room state
+    await broadcast_room_state(room)
+
     try:
         while True:
             raw = await websocket.receive_text()
@@ -231,6 +247,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         logger.exception("Unexpected error for client %s: %s", conn_id, exc)
     finally:
         await remove_connection(room, conn_id)
+        # Notify remaining participants of updated room state
+        await broadcast_room_state(room)
         logger.info(
             "Client %s left room %s (remaining: %d)",
             conn_id,
