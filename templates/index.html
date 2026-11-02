@@ -263,10 +263,10 @@
       <p>Private audio calls &mdash; no phone numbers, no personal data.</p>
     </header>
 
-    <!-- Lobby: start a call -->
+    <!-- Lobby: start a call in the shared room -->
     <section id="lobby">
       <h2>ParkProxy</h2>
-      <p>Start a private audio call. Share the link with one other person.</p>
+      <p>Click Start Call to enter the shared audio room. One other person can join you.</p>
       <button id="start-btn">Start Call</button>
       <button id="copy-btn" class="hidden">Copy room link</button>
     </section>
@@ -337,6 +337,9 @@
     }
 
     const MAX_ROOM_LENGTH = 64;
+
+// Single shared room — everyone who clicks Start Call joins here
+const PUBLIC_ROOM = "parkproxy-public";
 
     /* --------------------------------------------------------------
        DOM elements
@@ -660,32 +663,21 @@
        UI initialization
        -------------------------------------------------------------- */
     function initUI() {
-      // Pre-fill room from query param if someone opened a shared link
-      const params = new URLSearchParams(location.search);
-      const paramRoom = params.get("room");
-      if (paramRoom) {
-        roomId = paramRoom;
-        copyBtnEl.classList.remove("hidden");
-        copyBtnEl.title = buildRoomUrl(roomId);
-      }
+      // Single shared room — everyone joins the same room
+      roomId = PUBLIC_ROOM;
+      copyBtnEl.classList.remove("hidden");
+      copyBtnEl.title = buildRoomUrl(PUBLIC_ROOM);
 
       startBtnEl.addEventListener("click", async () => {
-        // Generate a unique room id automatically
-        const room = generateRoomId();
-        roomId = room;
-        copyBtnEl.classList.remove("hidden");
-        copyBtnEl.title = buildRoomUrl(roomId);
-
         startBtnEl.disabled = true;
         startBtnEl.textContent = "Calling&hellip;";
 
         try {
           await initLocalStream();
 
-          await connectSignaling(room);
+          await connectSignaling(PUBLIC_ROOM);
 
           // Wait for the server to assign a WebRTC role (offerer/answerer).
-          // The person who clicks Start Call is the first connection = offerer.
           await waitForRole();
 
           // Fetch time-limited TURN credentials before creating the peer
