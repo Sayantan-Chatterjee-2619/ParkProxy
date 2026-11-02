@@ -138,6 +138,99 @@
       min-height: 1.25rem;
     }
 
+    /* --------------------------------------------------------------
+       Audio visualizer
+       -------------------------------------------------------------- */
+    #audio-viz {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1rem 0;
+    }
+
+    #audio-viz.visible {
+      display: flex;
+    }
+
+    .viz-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .viz-label {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    .viz-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 60px;
+      padding: 0.5rem;
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 0.75rem;
+    }
+
+    .viz-bar {
+      width: 6px;
+      background: #3b82f6;
+      border-radius: 2px;
+      transition: height 0.05s ease-out;
+    }
+
+    .viz-bar.active {
+      background: #22c55e;
+    }
+
+    .viz-pulse {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 2px solid #3b82f6;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .viz-pulse.active {
+      border-color: #22c55e;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+    }
+
+    .viz-pulse::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      opacity: 0;
+      animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+
+    .viz-pulse.active::after {
+      opacity: 0.5;
+    }
+
+    @keyframes pulse-ring {
+      0% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      70% {
+        transform: scale(1);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(0.8);
+        opacity: 0;
+      }
+    }
+
     .controls {
       display: flex;
       gap: 0.75rem;
@@ -257,6 +350,24 @@
       <div id="remote-label">Connected to peer</div>
       <div id="participant-count">Participants: 1</div>
       <div id="status">Establishing secure connection&hellip;</div>
+      <div id="audio-viz">
+        <div class="viz-group">
+          <div class="viz-label">You</div>
+          <div class="viz-bars" id="local-viz-bars">
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+            <div class="viz-bar"></div>
+          </div>
+        </div>
+        <div class="viz-pulse" id="remote-viz-pulse"></div>
+      </div>
       <div class="controls">
         <button id="mute-btn">Mute Mic</button>
         <button id="end-btn">End Call</button>
@@ -356,6 +467,13 @@ const PUBLIC_ROOM = "parkproxy-public";
     let roleResolve = null;
     let overlayResolve = null;
     let remoteAudioElements = []; // Track remote audio elements for cleanup
+    let audioContext = null;
+    let localAnalyser = null;
+    let remoteAnalyser = null;
+    let vizAnimationId = null;
+    const localBars = document.querySelectorAll("#local-viz-bars .viz-bar");
+    const remotePulseEl = $("remote-viz-pulse");
+    const audioVizEl = $("audio-viz");
 
     /* --------------------------------------------------------------
        Helpers
@@ -435,6 +553,10 @@ const PUBLIC_ROOM = "parkproxy-public";
       // Local audio is not appended to the DOM to keep UI minimal.
       // It is kept muted purely to satisfy the browser's autoplay policy.
       localAudio.play().catch(() => {});
+
+      // Initialize audio visualizer for local mic
+      initAudioViz();
+      setupStreamAnalysis(localStream, "local");
     }
 
     function toggleMute() {
@@ -445,6 +567,74 @@ const PUBLIC_ROOM = "parkproxy-public";
       });
       muteBtnEl.textContent = isMuted ? "Unmute Mic" : "Mute Mic";
       muteBtnEl.classList.toggle("muted", isMuted);
+    }
+
+    /* --------------------------------------------------------------
+       Audio visualizer (Web Audio API)
+       -------------------------------------------------------------- */
+    function initAudioViz() {
+      if (!audioContext) {
+        const AudioContext =
+          window.AudioContext || window.webkitAudioContext;
+        audioContext = new AudioContext();
+      }
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+      if (vizAnimationId) return;
+      vizAnimationId = requestAnimationFrame(vizLoop);
+    }
+
+    function setupStreamAnalysis(stream, type) {
+      if (!audioContext) return;
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      if (type === "local") {
+        localAnalyser = analyser;
+      } else if (type === "remote") {
+        remoteAnalyser = analyser;
+      }
+    }
+
+    function getVolume(analyser) {
+      if (!analyser) return 0;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) {
+        sum += data[i];
+      }
+      return sum / data.length / 255;
+    }
+
+    function vizLoop() {
+      const localVol = getVolume(localAnalyser);
+      const remoteVol = getVolume(remoteAnalyser);
+
+      // Update local bars
+      const barCount = localBars.length;
+      const localHeight = Math.max(localVol * 100, 10);
+      localBars.forEach((bar, i) => {
+        const h = Math.max(localVol * (60 + Math.sin(i) * 20), 8);
+        bar.style.height = `${h}px`;
+        bar.classList.toggle("active", localVol > 0.05);
+      });
+
+      // Update remote pulse
+      if (remoteVol > 0.05) {
+        remotePulseEl.classList.add("active");
+      } else {
+        remotePulseEl.classList.remove("active");
+      }
+
+      // Show/hide viz container
+      if (localVol > 0.02 || remoteVol > 0.02) {
+        audioVizEl.classList.add("visible");
+      }
+
+      vizAnimationId = requestAnimationFrame(vizLoop);
     }
 
     async function createPeerConnection() {
@@ -470,6 +660,9 @@ const PUBLIC_ROOM = "parkproxy-public";
         audio.play().catch((err) => {
           console.warn("Remote audio autoplay blocked:", err);
         });
+
+        // Initialize audio visualizer for remote audio
+        setupStreamAnalysis(remoteStream, "remote");
       };
 
       // ICE candidate gathering -> signal to peer
@@ -600,6 +793,30 @@ const PUBLIC_ROOM = "parkproxy-public";
         }
       });
       remoteAudioElements = [];
+
+      // Cleanup audio visualizer
+      if (vizAnimationId) {
+        cancelAnimationFrame(vizAnimationId);
+        vizAnimationId = null;
+      }
+      if (audioContext) {
+        try {
+          audioContext.close();
+        } catch (err) {
+          console.warn("Failed to close audio context:", err);
+        }
+        audioContext = null;
+      }
+      localAnalyser = null;
+      remoteAnalyser = null;
+
+      // Reset visualizer UI
+      localBars.forEach((bar) => {
+        bar.style.height = "8px";
+        bar.classList.remove("active");
+      });
+      remotePulseEl.classList.remove("active");
+      audioVizEl.classList.remove("visible");
 
       if (localStream) {
         localStream.getTracks().forEach((track) => track.stop());
