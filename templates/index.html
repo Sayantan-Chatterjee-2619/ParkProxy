@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Park Assist — Private Audio Call</title>
+  <meta name="description" content="Privacy-focused WebRTC audio calling via unique room URLs." />
+  <style>
+    /* --------------------------------------------------------------
+       Reset & base
+       -------------------------------------------------------------- */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      line-height: 1.5;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+
+    /* --------------------------------------------------------------
+       Header
+       -------------------------------------------------------------- */
+    header {
+      padding: 1rem 0 0.5rem;
+      border-bottom: 1px solid #334155;
+      margin-bottom: 1rem;
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin-top: 0.25rem;
+    }
+
+    /* --------------------------------------------------------------
+       Lobby (pre-call)
+       -------------------------------------------------------------- */
+    #lobby {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    #room-input {
+      width: 100%;
+      max-width: 320px;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      background: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 0.5rem;
+      color: #f8fafc;
+    }
+
+    #room-input::placeholder {
+      color: #64748b;
+    }
+
+    button {
+      width: 100%;
+      max-width: 320px;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    #join-btn {
+      background: #3b82f6;
+      color: #ffffff;
+    }
+
+    #join-btn:hover {
+      background: #2563eb;
+    }
+
+    #join-btn:disabled {
+      background: #475569;
+      cursor: not-allowed;
+    }
+
+    #copy-btn {
+      margin-top: 0.5rem;
+      background: transparent;
+      border: 1px solid #475569;
+      color: #94a3b8;
+      max-width: 320px;
+      width: 100%;
+    }
+
+    #copy-btn:hover {
+      border-color: #3b82f6;
+      color: #3b82f6;
+    }
+
+    /* --------------------------------------------------------------
+       Call (active call)
+       -------------------------------------------------------------- */
+    #call-ui {
+      display: none;
+      flex-direction: column;
+      gap: 1rem;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      text-align: center;
+    }
+
+    #remote-label {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin-bottom: 0.25rem;
+    }
+
+    #status {
+      font-size: 0.875rem;
+      color: #64748b;
+      min-height: 1.25rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .controls button {
+      flex: 1;
+      max-width: none;
+      padding: 0.625rem 1rem;
+      font-size: 0.95rem;
+    }
+
+    #mute-btn {
+      background: #1e293b;
+      border: 1px solid #475569;
+      color: #f8fafc;
+    }
+
+    #mute-btn:hover {
+      background: #334155;
+    }
+
+    #mute-btn.muted {
+      background: #7f1d1d;
+      border-color: #991b1b;
+    }
+
+    #mute-btn.muted:hover {
+      background: #991b1b;
+    }
+
+    #end-btn {
+      background: #7f1d1d;
+      color: #ffffff;
+    }
+
+    #end-btn:hover {
+      background: #991b1b;
+    }
+
+    /* --------------------------------------------------------------
+       Overlays
+       -------------------------------------------------------------- */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.9);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      text-align: center;
+      padding: 1rem;
+    }
+
+    #overlay.visible {
+      display: flex;
+    }
+
+    #overlay h2 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    #overlay p {
+      color: #94a3b8;
+      margin-bottom: 1.5rem;
+      max-width: 320px;
+    }
+
+    #overlay button {
+      max-width: 260px;
+      width: 100%;
+    }
+
+    /* --------------------------------------------------------------
+       Utilities
+       -------------------------------------------------------------- */
+    .hidden {
+      display: none !important;
+    }
+
+    .text-accent {
+      color: #3b82f6;
+    }
+
+    @media (max-width: 480px) {
+      #app {
+        padding: 0.5rem;
+      }
+      header h1 {
+        font-size: 1.1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Park Assist</h1>
+      <p>Private audio calls &mdash; no phone numbers, no personal data.</p>
+    </header>
+
+    <!-- Lobby: create / join a room -->
+    <section id="lobby">
+      <input
+        type="text"
+        id="room-input"
+        placeholder="Enter or create a room name"
+        maxlength="64"
+        autocomplete="off"
+      />
+      <button id="join-btn">Join Call</button>
+      <button id="copy-btn" class="hidden">Copy room link</button>
+    </section>
+
+    <!-- Active call UI -->
+    <section id="call-ui">
+      <div id="remote-label">Connected to peer</div>
+      <div id="status">Establishing secure connection&hellip;</div>
+      <div class="controls">
+        <button id="mute-btn">Mute Mic</button>
+        <button id="end-btn">End Call</button>
+      </div>
+    </section>
+
+    <!-- Full-screen error / info overlay -->
+    <div id="overlay">
+      <h2 id="overlay-title">Error</h2>
+      <p id="overlay-message">Something went wrong.</p>
+      <button id="overlay-action">OK</button>
+    </div>
+  </div>
+
+  <script>
+    /* --------------------------------------------------------------
+       Constants & configuration
+       -------------------------------------------------------------- */
+    const WS_PROTOCOL = location.protocol === "https:" ? "wss:" : "ws:";
+    const WS_HOST = location.host;
+    const WS_URL = `${WS_PROTOCOL}//${WS_HOST}/ws`;
+
+    // Public Google STUN servers + OpenRelay TURN servers for NAT traversal.
+    // Note: The public OpenRelay TURN credentials below are community-provided
+    // and may change. For production, self-host a TURN server (e.g. coturn).
+    // Base STUN servers (public Google). TURN servers are filled in at runtime
+    // from /turn-credentials so the static coturn password never ships to the
+    // frontend. Credentials are time-limited via coturn auth-secret mode.
+    const STUN_URLS = [
+      "stun:stun.l.google.com:19302",
+      "stun:stun1.l.google.com:19302",
+      "stun:stun2.l.google.com:19302",
+      "stun:stun3.l.google.com:19302",
+      "stun:stun4.l.google.com:19302",
+    ];
+
+    let turnCredentials = null;
+
+    async function fetchTurnCredentials() {
+      try {
+        const resp = await fetch("/turn-credentials");
+        if (!resp.ok) throw new Error("Failed to fetch TURN credentials");
+        turnCredentials = await resp.json();
+      } catch (err) {
+        console.warn("TURN credentials unavailable, falling back to STUN only:", err);
+        turnCredentials = null;
+      }
+    }
+
+    function buildRtcConfig() {
+      const iceServers = STUN_URLS.map((url) => ({ urls: url }));
+      if (turnCredentials) {
+        const { username, credential } = turnCredentials;
+        iceServers.push(
+          { urls: "turn:localhost:3478", username, credential },
+          { urls: "turns:localhost:5349?transport=tcp", username, credential }
+        );
+      }
+      return { iceServers, iceCandidatePoolSize: 0 };
+    }
+
+    const MAX_ROOM_LENGTH = 64;
+
+    /* --------------------------------------------------------------
+       DOM elements
+       -------------------------------------------------------------- */
+    const $ = (id) => document.getElementById(id);
+
+    const lobbyEl = $("lobby");
+    const callUiEl = $("call-ui");
+    const overlayEl = $("overlay");
+    const overlayTitleEl = $("overlay-title");
+    const overlayMessageEl = $("overlay-message");
+    const overlayActionEl = $("overlay-action");
+
+    const roomInputEl = $("room-input");
+    const joinBtnEl = $("join-btn");
+    const copyBtnEl = $("copy-btn");
+
+    const remoteLabelEl = $("remote-label");
+    const statusEl = $("status");
+    const muteBtnEl = $("mute-btn");
+    const endBtnEl = $("end-btn");
+
+    /* --------------------------------------------------------------
+       State
+       -------------------------------------------------------------- */
+    let roomId = null;
+    let ws = null;
+    let peerConnection = null;
+    let localStream = null;
+    let isCaller = false;
+    let isMuted = false;
+    let peerRole = null; // "offerer" | "answerer", set by signaling server
+    let roleResolve = null;
+    let overlayResolve = null;
+
+    /* --------------------------------------------------------------
+       Helpers
+       -------------------------------------------------------------- */
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function showOverlay(title, message, actionLabel = "OK") {
+      return new Promise((resolve) => {
+        overlayResolve = resolve;
+        overlayTitleEl.textContent = title;
+        overlayMessageEl.textContent = message;
+        overlayActionEl.textContent = actionLabel;
+        overlayEl.classList.add("visible");
+      });
+    }
+
+    function hideOverlay() {
+      overlayEl.classList.remove("visible");
+      if (overlayResolve) {
+        overlayResolve();
+        overlayResolve = null;
+      }
+    }
+
+    function generateRoomId() {
+      // Short, URL-friendly room id
+      return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+    }
+
+    function buildRoomUrl(room) {
+      return `${location.origin}?room=${encodeURIComponent(room)}`;
+    }
+
+    function waitForRole() {
+      return new Promise((resolve) => {
+        if (peerRole) {
+          resolve();
+          return;
+        }
+        roleResolve = resolve;
+      });
+    }
+
+    /* --------------------------------------------------------------
+       WebRTC
+       -------------------------------------------------------------- */
+    async function initLocalStream() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: false, // audio-only
+        });
+      } catch (err) {
+        let msg = "Microphone access denied.";
+        if (err.name === "NotAllowedError") {
+          msg =
+            "Microphone permission was denied. Please allow microphone access and refresh.";
+        } else if (err.name === "NotFoundError") {
+          msg = "No microphone device found on this device.";
+        } else if (err.name === "NotReadableError") {
+          msg = "The microphone is in use by another application.";
+        } else if (err.name === "OverconstrainedError") {
+          msg = "Microphone constraints could not be satisfied.";
+        } else if (err.name === "TypeError") {
+          msg = "Invalid audio constraints requested.";
+        }
+        throw new Error(msg);
+      }
+
+      // Expose local stream (muted by default so you don't hear yourself)
+      const localAudio = new Audio();
+      localAudio.srcObject = localStream;
+      localAudio.muted = true;
+      localAudio.setAttribute("playsinline", "");
+      // Local audio is not appended to the DOM to keep UI minimal.
+      // It is kept muted purely to satisfy the browser's autoplay policy.
+      localAudio.play().catch(() => {});
+    }
+
+    function toggleMute() {
+      if (!localStream) return;
+      isMuted = !isMuted;
+      localStream.getAudioTracks().forEach((track) => {
+        track.enabled = !isMuted;
+      });
+      muteBtnEl.textContent = isMuted ? "Unmute Mic" : "Mute Mic";
+      muteBtnEl.classList.toggle("muted", isMuted);
+    }
+
+    async function createPeerConnection() {
+      peerConnection = new RTCPeerConnection(buildRtcConfig());
+
+      // Add local audio tracks (audio-only)
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          peerConnection.addTrack(track, localStream);
+        });
+      }
+
+      // Handle incoming remote audio track
+      peerConnection.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        const audio = document.createElement("audio");
+        audio.srcObject = remoteStream;
+        audio.autoplay = true;
+        audio.setAttribute("playsinline", "");
+        audio.style.display = "none";
+        document.body.appendChild(audio);
+        audio.play().catch((err) => {
+          console.warn("Remote audio autoplay blocked:", err);
+        });
+      };
+
+      // ICE candidate gathering -> signal to peer
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: "candidate",
+              candidate: event.candidate.toJSON(),
+            })
+          );
+        }
+      };
+
+      peerConnection.oniceconnectionstatechange = () => {
+        const state = peerConnection.iceConnectionState;
+        setStatus(`Connection: ${state.replace(/_/g, " ")}`);
+        if (state === "connected") {
+          setStatus("Connected &mdash; encrypted audio stream active");
+        } else if (state === "disconnected" || state === "failed") {
+          setStatus("Connection lost. Refresh to reconnect.");
+        }
+      };
+
+      peerConnection.onsignalingstatechange = () => {
+        // Signaling state transitions are handled implicitly via WS messages.
+      };
+
+      // Only the offerer creates an offer; the answerer waits for one.
+      // This prevents glare (both peers sending offers simultaneously).
+      if (peerRole === "offerer") {
+        isCaller = true;
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: "offer", sdp: offer }));
+        setStatus("Waiting for peer to join&hellip;");
+      } else {
+        setStatus("Waiting for caller&hellip;");
+      }
+
+      return peerConnection;
+    }
+
+    async function handleSignalingMessage(message) {
+      const { type } = message;
+
+      if (type === "role") {
+        peerRole = message.role;
+        if (roleResolve) {
+          roleResolve();
+          roleResolve = null;
+        }
+        return;
+      }
+
+      // WebRTC handshake only begins once a role has been assigned.
+      if (!peerRole) {
+        await waitForRole();
+      }
+
+      if (type === "offer") {
+        isCaller = false;
+        await peerConnection.setRemoteDescription(
+          new RTCSessionDescription(message.sdp)
+        );
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: "answer", sdp: answer }));
+        setStatus("Connecting to peer&hellip;");
+      } else if (type === "answer") {
+        await peerConnection.setRemoteDescription(
+          new RTCSessionDescription(message.sdp)
+        );
+        setStatus("Peer answered. Connecting&hellip;");
+      } else if (type === "candidate") {
+        try {
+          await peerConnection.addIceCandidate(message.candidate);
+        } catch (err) {
+          console.error("Failed to add ICE candidate:", err);
+        }
+      } else if (type === "bye") {
+        setStatus("Peer ended the call.");
+        endCall({ notifyPeer: false });
+        setTimeout(() => {
+          showOverlay("Call Ended", "The other participant left the call.", "OK");
+        }, 800);
+      } else if (type === "error") {
+        endCall({ notifyPeer: false });
+        showOverlay("Error", message.message || "An error occurred.", "OK");
+      }
+    }
+
+    function endCall({ notifyPeer = true } = {}) {
+      if (ws && ws.readyState === WebSocket.OPEN && notifyPeer) {
+        try {
+          ws.send(JSON.stringify({ type: "bye" }));
+        } catch (err) {
+          console.warn("Failed to send bye:", err);
+        }
+      }
+
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+
+      if (localStream) {
+        localStream.getTracks().forEach((track) => track.stop());
+        localStream = null;
+      }
+
+      isCaller = false;
+      isMuted = false;
+      muteBtnEl.textContent = "Mute Mic";
+      muteBtnEl.classList.remove("muted");
+    }
+
+    function returnToLobby() {
+      endCall({ notifyPeer: false });
+      callUiEl.style.display = "none";
+      lobbyEl.style.display = "flex";
+      setStatus("");
+    }
+
+    /* --------------------------------------------------------------
+       WebSocket signaling
+       -------------------------------------------------------------- */
+    async function connectSignaling(room) {
+      roomId = room;
+      const url = `${WS_URL}/${encodeURIComponent(room)}`;
+
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        setStatus("Connected to signaling server.");
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          handleSignalingMessage(message);
+        } catch (err) {
+          console.error("Invalid signaling message:", err);
+        }
+      };
+
+      ws.onclose = (event) => {
+        if (event.code === 1008) {
+          // Policy violation (room full)
+          returnToLobby();
+          showOverlay("Room Full", "This room already has two participants. Try a different room name.", "OK");
+          return;
+        }
+        setStatus("Disconnected from signaling server.");
+        if (!callUiEl.classList.contains("hidden")) {
+          showOverlay(
+            "Disconnected",
+            "You were disconnected from the call. Refresh to reconnect.",
+            "Reconnect"
+          ).then(() => {
+            returnToLobby();
+          });
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        setStatus("Signaling error. Refresh to retry.");
+      };
+
+      return ws;
+    }
+
+    /* --------------------------------------------------------------
+       UI initialization
+       -------------------------------------------------------------- */
+    function initUI() {
+      // Pre-fill room from query param if present
+      const params = new URLSearchParams(location.search);
+      const paramRoom = params.get("room");
+      if (paramRoom) {
+        roomInputEl.value = paramRoom;
+      }
+
+      joinBtnEl.addEventListener("click", async () => {
+        const room = roomInputEl.value.trim();
+        if (!room) {
+          roomInputEl.focus();
+          return;
+        }
+        if (room.length > MAX_ROOM_LENGTH) {
+          await showOverlay(
+            "Invalid Room",
+            `Room name must be ${MAX_ROOM_LENGTH} characters or fewer.`,
+            "OK"
+          );
+          return;
+        }
+
+        joinBtnEl.disabled = true;
+        joinBtnEl.textContent = "Joining&hellip;";
+
+        try {
+          await initLocalStream();
+
+          await connectSignaling(room);
+
+          // Wait for the server to assign a WebRTC role (offerer/answerer).
+          // This coordinates the offer/answer handshake and prevents glare
+          // (both peers sending offers simultaneously).
+          await waitForRole();
+
+          // Fetch time-limited TURN credentials before creating the peer
+          // connection so coturn auth-secret mode works.
+          await fetchTurnCredentials();
+
+          await createPeerConnection();
+
+          lobbyEl.style.display = "none";
+          callUiEl.style.display = "flex";
+          setStatus(
+            peerRole === "offerer"
+              ? "Waiting for peer to join&hellip;"
+              : "Waiting for caller&hellip;"
+          );
+        } catch (err) {
+          console.error(err);
+          joinBtnEl.disabled = false;
+          joinBtnEl.textContent = "Join Call";
+          await showOverlay("Call Error", err.message, "OK");
+        }
+      });
+
+      copyBtnEl.addEventListener("click", () => {
+        if (!roomId) return;
+        const url = buildRoomUrl(roomId);
+        navigator.clipboard
+          .writeText(url)
+          .then(() => {
+            const original = copyBtnEl.textContent;
+            copyBtnEl.textContent = "Copied!";
+            setTimeout(() => {
+              copyBtnEl.textContent = original;
+            }, 1500);
+          })
+          .catch(() => {
+            // Fallback for browsers without Clipboard API
+            roomInputEl.select();
+            document.execCommand("copy");
+          });
+      });
+
+      muteBtnEl.addEventListener("click", toggleMute);
+
+      endBtnEl.addEventListener("click", () => {
+        endCall({ notifyPeer: true });
+        showOverlay("Call Ended", "You ended the call.", "OK").then(() => {
+          returnToLobby();
+        });
+      });
+
+      overlayActionEl.addEventListener("click", () => {
+        hideOverlay();
+      });
+
+      // Update the copy button when a room is established
+      Object.defineProperty(window, "currentRoomId", {
+        set(val) {
+          roomId = val;
+          if (val) {
+            copyBtnEl.classList.remove("hidden");
+            copyBtnEl.title = buildRoomUrl(val);
+          } else {
+            copyBtnEl.classList.add("hidden");
+          }
+        },
+        get() {
+          return roomId;
+        },
+      });
+    }
+
+    /* --------------------------------------------------------------
+       Kick off
+       -------------------------------------------------------------- */
+    document.addEventListener("DOMContentLoaded", initUI);
+  </script>
+</body>
+</html>
