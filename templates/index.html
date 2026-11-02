@@ -678,6 +678,7 @@ const PUBLIC_ROOM = "parkproxy-public";
       // Handle incoming remote audio track
       peerConnection.ontrack = (event) => {
         const [remoteStream] = event.streams;
+        console.log("[DEBUG] ontrack fired, tracks:", remoteStream.getTracks().length, "audio tracks:", remoteStream.getAudioTracks().length);
         const audio = document.createElement("audio");
         audio.srcObject = remoteStream;
         audio.autoplay = true;
@@ -689,8 +690,15 @@ const PUBLIC_ROOM = "parkproxy-public";
           console.warn("Remote audio autoplay blocked:", err);
         });
 
-        // Initialize audio visualizer for remote audio
-        setupStreamAnalysis(remoteStream, "remote");
+        // Ensure audio context is running before analyzing
+        if (audioContext) {
+          audioContext.resume().then(() => {
+            console.log("[DEBUG] AudioContext resumed for remote analysis");
+            setupStreamAnalysis(remoteStream, "remote");
+          });
+        } else {
+          setupStreamAnalysis(remoteStream, "remote");
+        }
       };
 
       // ICE candidate gathering -> signal to peer
