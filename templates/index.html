@@ -60,26 +60,59 @@
     #lobby {
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
+      gap: 1rem;
       flex: 1;
       align-items: center;
       justify-content: center;
       text-align: center;
     }
 
-    #room-input {
+    #start-btn {
       width: 100%;
       max-width: 320px;
-      padding: 0.75rem 1rem;
-      font-size: 1rem;
-      background: #1e293b;
-      border: 1px solid #475569;
-      border-radius: 0.5rem;
-      color: #f8fafc;
+      padding: 1.25rem 2rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      background: #dc2626;
+      color: #ffffff;
+      border: none;
+      border-radius: 0.75rem;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.4);
     }
 
-    #room-input::placeholder {
-      color: #64748b;
+    #start-btn:hover {
+      background: #b91c1c;
+      box-shadow: 0 6px 8px -1px rgba(220, 38, 38, 0.5);
+    }
+
+    #start-btn:active {
+      transform: scale(0.98);
+    }
+
+    #start-btn:disabled {
+      background: #475569;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    #copy-btn {
+      margin-top: 0.5rem;
+      background: transparent;
+      border: 1px solid #475569;
+      color: #94a3b8;
+      max-width: 320px;
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font-size: 0.95rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+    }
+
+    #copy-btn:hover {
+      border-color: #3b82f6;
+      color: #3b82f6;
     }
 
     button {
@@ -96,34 +129,6 @@
 
     button:active {
       transform: scale(0.98);
-    }
-
-    #join-btn {
-      background: #3b82f6;
-      color: #ffffff;
-    }
-
-    #join-btn:hover {
-      background: #2563eb;
-    }
-
-    #join-btn:disabled {
-      background: #475569;
-      cursor: not-allowed;
-    }
-
-    #copy-btn {
-      margin-top: 0.5rem;
-      background: transparent;
-      border: 1px solid #475569;
-      color: #94a3b8;
-      max-width: 320px;
-      width: 100%;
-    }
-
-    #copy-btn:hover {
-      border-color: #3b82f6;
-      color: #3b82f6;
     }
 
     /* --------------------------------------------------------------
@@ -258,16 +263,11 @@
       <p>Private audio calls &mdash; no phone numbers, no personal data.</p>
     </header>
 
-    <!-- Lobby: create / join a room -->
+    <!-- Lobby: start a call -->
     <section id="lobby">
-      <input
-        type="text"
-        id="room-input"
-        placeholder="Enter or create a room name"
-        maxlength="64"
-        autocomplete="off"
-      />
-      <button id="join-btn">Join Call</button>
+      <h2>ParkProxy</h2>
+      <p>Start a private audio call. Share the link with one other person.</p>
+      <button id="start-btn">Start Call</button>
       <button id="copy-btn" class="hidden">Copy room link</button>
     </section>
 
@@ -350,8 +350,7 @@
     const overlayMessageEl = $("overlay-message");
     const overlayActionEl = $("overlay-action");
 
-    const roomInputEl = $("room-input");
-    const joinBtnEl = $("join-btn");
+    const startBtnEl = $("start-btn");
     const copyBtnEl = $("copy-btn");
 
     const remoteLabelEl = $("remote-label");
@@ -661,30 +660,24 @@
        UI initialization
        -------------------------------------------------------------- */
     function initUI() {
-      // Pre-fill room from query param if present
+      // Pre-fill room from query param if someone opened a shared link
       const params = new URLSearchParams(location.search);
       const paramRoom = params.get("room");
       if (paramRoom) {
-        roomInputEl.value = paramRoom;
+        roomId = paramRoom;
+        copyBtnEl.classList.remove("hidden");
+        copyBtnEl.title = buildRoomUrl(roomId);
       }
 
-      joinBtnEl.addEventListener("click", async () => {
-        const room = roomInputEl.value.trim();
-        if (!room) {
-          roomInputEl.focus();
-          return;
-        }
-        if (room.length > MAX_ROOM_LENGTH) {
-          await showOverlay(
-            "Invalid Room",
-            `Room name must be ${MAX_ROOM_LENGTH} characters or fewer.`,
-            "OK"
-          );
-          return;
-        }
+      startBtnEl.addEventListener("click", async () => {
+        // Generate a unique room id automatically
+        const room = generateRoomId();
+        roomId = room;
+        copyBtnEl.classList.remove("hidden");
+        copyBtnEl.title = buildRoomUrl(roomId);
 
-        joinBtnEl.disabled = true;
-        joinBtnEl.textContent = "Joining&hellip;";
+        startBtnEl.disabled = true;
+        startBtnEl.textContent = "Calling&hellip;";
 
         try {
           await initLocalStream();
@@ -692,8 +685,7 @@
           await connectSignaling(room);
 
           // Wait for the server to assign a WebRTC role (offerer/answerer).
-          // This coordinates the offer/answer handshake and prevents glare
-          // (both peers sending offers simultaneously).
+          // The person who clicks Start Call is the first connection = offerer.
           await waitForRole();
 
           // Fetch time-limited TURN credentials before creating the peer
@@ -711,8 +703,8 @@
           );
         } catch (err) {
           console.error(err);
-          joinBtnEl.disabled = false;
-          joinBtnEl.textContent = "Join Call";
+          startBtnEl.disabled = false;
+          startBtnEl.textContent = "Start Call";
           await showOverlay("Call Error", err.message, "OK");
         }
       });
@@ -730,9 +722,18 @@
             }, 1500);
           })
           .catch(() => {
-            // Fallback for browsers without Clipboard API
-            roomInputEl.select();
+            // Fallback: create a temporary input to copy
+            const temp = document.createElement("textarea");
+            temp.value = url;
+            document.body.appendChild(temp);
+            temp.select();
             document.execCommand("copy");
+            document.body.removeChild(temp);
+            const original = copyBtnEl.textContent;
+            copyBtnEl.textContent = "Copied!";
+            setTimeout(() => {
+              copyBtnEl.textContent = original;
+            }, 1500);
           });
       });
 
